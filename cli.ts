@@ -1,72 +1,92 @@
 import { Option } from "./option";
 
-interface Argv {
+interface ParsedArg {
     [flag: string]: any
 }
 
 export module CLI {
-    let _options: Option[];
-
-    export function applyOptions(options: Option[]) {
-        _options = options;
-        return CLI;
-    }
-
-    export function parse(): Argv {
-        const isOptionApplied = _options && _options.length > 0;
-        if (!isOptionApplied) {
+    function validateOptions(options: Option[]) {
+        if (options.length === 0) {
             throw new Error(`Need options`)
         }
 
-        const argv: Argv = {}
-        const args = process.argv.slice(2);
+        const flags = new Set<string>();
+        const aliases = new Set<string>();
 
-        for (const option of _options) {
-            let flagIndex = args.indexOf(`--${option.flag}`);
-            if (flagIndex === -1 && option.alias) {
-                flagIndex = args.indexOf(`-${option.alias}`);
+        for(const option of options){
+            if (option.defaultValue && typeof option.defaultValue !== option.valueType) {
+                throw new Error(`defaultValue "${option.defaultValue}" is not matched ${option.valueType}`)
             }
-
-            let value;
-            if(flagIndex === -1){
-                value = option.defaultValue;
+    
+            if (flags.has(option.flag)) {
+                throw new Error(`flag "${option.flag}" already exist`);
             }
             else{
-                const nextValue = args[flagIndex + 1]
-                const isNextValue = !(Option.hasFlag(nextValue) || Option.hasAlias(nextValue));
-                value = isNextValue ? nextValue : option.defaultValue
+                flags.add(option.flag);
+            }
+    
+            if(option.alias){
+                if(aliases.has(option.alias)){
+                    throw new Error(`alias "${option.alias}" already exist`);    
+                }
+                aliases.add(option.alias);
+            }
+        }
+    }
+
+    export function parse(options: Option[], args: string[]): ParsedArg {
+        validateOptions(options);
+
+        const parsedArg: ParsedArg = {}
+
+        for (const option of options) {
+            const flagIndex = args.indexOf(`--${option.flag}`) === -1 ? args.indexOf(`-${option.alias}`) : args.indexOf(`--${option.flag}`);
+            const value = flagIndex === -1 ? option.defaultValue : args[flagIndex + 1];
+            
+            if(value === undefined){
+                throw new Error(`${option.flag} is not initilized`)
             }
 
+            parsedArg[option.flag] = value;
             switch (option.valueType) {
                 case 'boolean':
-                    argv[option.flag] = JSON.parse(value);
+                    if(value === 'true'){
+                        parsedArg[option.flag] = true;
+                    }                    
+                    else if(value === 'false'){
+                        parsedArg[option.flag] = false;
+                    }
                     break;
                 case 'number':
-                    argv[option.flag] = Number(value);
+                    parsedArg[option.flag] = Number(value);
                     break;
                 case 'string':
-                    argv[option.flag] = String(value);
+                    if(value) {
+                        parsedArg[option.flag] = value.toString();
+                    }
                     break;
                 case 'object':
-                    if (typeof value === 'string') {
-                        argv[option.flag] = JSON.parse(value);
-                        break;
+                    try{
+                        parsedArg[option.flag] = JSON.parse(value);
                     }
+                    catch{
+                    }
+                    break;
                 default:
-                    argv[option.flag] = value;
+                    throw new Error(`${option.valueType} is not supported type`);
             }
 
-            if (typeof argv[option.flag] !== option.valueType) {
-                throw new Error(`Value ${argv[option.flag]} is not type "${option.valueType}"`)
+            if (typeof parsedArg[option.flag] !== option.valueType) {
+                throw new Error(`Value ${parsedArg[option.flag]} is not type "${option.valueType}"`)
             }
 
             if (option.choices) {
-                if (!option.choices.includes(argv[option.flag])) {
-                    throw new Error(`${argv[option.flag]} should be in ${option.choices}`)
+                if (!option.choices.includes(parsedArg[option.flag])) {
+                    throw new Error(`${parsedArg[option.flag]} should be in ${option.choices}`)
                 }
             }
         }
 
-        return argv;
+        return parsedArg;
     }
 }
