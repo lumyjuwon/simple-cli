@@ -1,10 +1,24 @@
 import { Option } from "./option";
 
-interface ParsedArg {
-    [flag: string]: any
-}
-
 export module CLI {
+    interface ParsedArg {
+        [flag: string]: any
+    }
+
+    function validateArgs(args: string[]) {
+        if(args.length % 2 !== 0) {
+            throw new Error(`the key and value of ${args} is not suitable`);
+        }
+
+        for(let i = 0; i < args.length; i+=2) {
+            const flag = args[i];
+            
+            if(!flag.startsWith('-')){
+                throw new Error(`${flag} should be start with "--" or "-"`);
+            }
+        }
+    }
+
     function validateOptions(options: Option[]) {
         if (options.length === 0) {
             throw new Error(`Need options`)
@@ -36,18 +50,17 @@ export module CLI {
 
     export function parse(options: Option[], args: string[]): ParsedArg {
         validateOptions(options);
-
+        validateArgs(args);
         const parsedArg: ParsedArg = {}
 
         for (const option of options) {
-            const flagIndex = args.indexOf(`--${option.flag}`) === -1 ? args.indexOf(`-${option.alias}`) : args.indexOf(`--${option.flag}`);
-            const value = flagIndex === -1 ? option.defaultValue : args[flagIndex + 1];
-            
-            if(value === undefined){
-                throw new Error(`${option.flag} is not initilized`)
-            }
+            const flag = `--${option.flag}`;
+            const alias = `-${option.alias}`;
 
+            const flagIndex = args.indexOf(flag) !== -1 ? args.indexOf(flag) : args.indexOf(alias);
+            const value = flagIndex === -1 ? option.defaultValue : args[flagIndex + 1];
             parsedArg[option.flag] = value;
+            
             switch (option.valueType) {
                 case 'boolean':
                     if(value === 'true'){
